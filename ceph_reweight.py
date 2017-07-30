@@ -2,6 +2,13 @@
 
 """
 # ceph_reweight.py
+
+
+## TODO
+
+* Fix sigfig bug
+* Substitute os functions for subprocess functions
+* Add parallel reweight functionality
 """
 
 __version__ = "0.1.0"
