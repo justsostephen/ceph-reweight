@@ -6,7 +6,6 @@
 
 ## TODO
 
-* Substitute os functions for subprocess functions
 * Switch from human readable to JSON status output
 * Use CERN health check criteria
 * Add parallel reweight functionality
@@ -17,7 +16,10 @@ __version__ = "0.1.0"
 __author__ = "Stephen Mather <stephen.mather@canonical.com>"
 
 import argparse
-from os import popen, system
+from subprocess import (
+    check_call,
+    check_output,
+)
 from time import sleep
 
 
@@ -44,24 +46,24 @@ def parse_arguments():
 
 def current_weight(osd):
     """Obtain current node weight."""
-    with popen("ceph osd tree") as osd_tree:
-        for line in osd_tree:
-            if osd + " " in line:
-                raw_weight = line.split()[1]
-                print("Current raw weight: {}".format(raw_weight))
-                # Ceph often reweights approximately, so round current weight
-                # for basis of comparison with target weight.
-                rounded_weight = round(float(raw_weight), 1)
-                print("Current rounded weight: {}".format(rounded_weight))
-                return rounded_weight
-        return None
+    osd_tree = check_output(["ceph", "osd", "tree"], universal_newlines=True)
+    for line in osd_tree.splitlines():
+        if osd + " " in line:
+            raw_weight = line.split()[1]
+            print("Current raw weight: {}".format(raw_weight))
+            # Ceph often reweights approximately, so round current weight
+            # for basis of comparison with target weight.
+            rounded_weight = round(float(raw_weight), 1)
+            print("Current rounded weight: {}".format(rounded_weight))
+            return rounded_weight
+    return None
 
 
 def ceph_health():
     """Obtain ceph health status."""
-    with popen("ceph health") as health:
-        status = health.read().split()[0]
-        print("Ceph status: {}".format(status))
+    health = check_output(["ceph", "health"], universal_newlines=True)
+    status = health.split()[0]
+    print("Ceph status: {}".format(status))
     return status
 
 
@@ -81,8 +83,8 @@ def reweight(osd, current, target, step):
             print("Reweighting {} from {} to {}...".format(osd,
                                                            current,
                                                            next_weight))
-            system("ceph osd crush reweight {} {}".format(osd,
-                                                          next_weight))
+            check_call(["ceph", "osd", "crush", "reweight", osd,
+                        str(next_weight)])
             sleep(5)  # Give the reweight a chance to kick off.
             current = current_weight(osd)
         else:
