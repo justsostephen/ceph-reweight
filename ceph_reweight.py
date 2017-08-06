@@ -6,9 +6,12 @@
 
 ## TODO
 
-* Fix sigfig bug
+* Remove `sudo` from commands
 * Substitute os functions for subprocess functions
+* Switch from human readable to JSON status output
+* Use CERN health check criteria
 * Add parallel reweight functionality
+* Bump minor when complete
 """
 
 __version__ = "0.1.0"
@@ -21,10 +24,21 @@ from time import sleep
 
 def parse_arguments():
     """Parse command line arguments."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("osd", help="specify name of OSD to drain")
-    parser.add_argument("weight", type=float, help="specify target weight")
-    parser.add_argument("step", type=float, help="specify reweight step")
+    parser = argparse.ArgumentParser(
+        description="Incrementally reweight Ceph OSDs."
+    )
+    parser.add_argument(
+        "osd", help="specify name of OSD to drain"
+    )
+    parser.add_argument(
+        "weight", type=float,
+        help=("specify target weight (Ceph often reweights approximately, so "
+              "current and target weights will be rounded to one decimal place "
+              "for basis of comparison)")
+    )
+    parser.add_argument(
+        "step", type=float, help="specify reweight step"
+    )
     args = parser.parse_args()
     return args
 
@@ -35,10 +49,12 @@ def current_weight(osd):
         for line in osd_tree:
             if osd + " " in line:
                 raw_weight = line.split()[1]
-                print("Raw weight: {}".format(raw_weight))
-                weight = round(float(raw_weight), 1)
-                print("Rounded weight: {}".format(weight))
-                return weight
+                print("Current raw weight: {}".format(raw_weight))
+                # Ceph often reweights approximately, so round current weight
+                # for basis of comparison with target weight.
+                rounded_weight = round(float(raw_weight), 1)
+                print("Current rounded weight: {}".format(rounded_weight))
+                return rounded_weight
         return None
 
 
@@ -82,11 +98,15 @@ def reweight(osd, current, target, step):
 def main():
     args = parse_arguments()
     current = current_weight(args.osd)
+    # Ceph often reweights approximately, so round target weight for basis of
+    # comparison with current weight.
+    target = round(args.weight, 1)
+    print("Rounded target weight: {}".format(target))
     if current is not None:
-        if current != args.weight:
-            reweight(args.osd, current, args.weight, args.step)
+        if current != target:
+            reweight(args.osd, current, target, args.step)
         else:
-            print("{} weight is already {}".format(args.osd, args.weight))
+            print("{} weight is already {}".format(args.osd, target))
     else:
         print("{} not found".format(args.osd))
 
