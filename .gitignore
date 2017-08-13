@@ -1,3 +1,4 @@
+*.json
 auto-reweight.py
 ceph-reweight-notes.md
 parallel_reweight.py

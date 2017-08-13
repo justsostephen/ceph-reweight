@@ -4,10 +4,16 @@
 # ceph_reweight.py
 
 
+## Ceph Commands
+
+* `ceph status --format json`
+* `ceph health --format json`
+* `ceph osd tree --format json`
+* `ceph osd crush reweight <osd> <weight>`
+
+
 ## TODO
 
-* Switch from human readable to JSON status output
-* Use CERN health check criteria
 * Add parallel reweight functionality
 * Bump minor when complete
 """
@@ -16,6 +22,7 @@ __version__ = "0.1.0"
 __author__ = "Stephen Mather <stephen.mather@canonical.com>"
 
 import argparse
+import json
 from subprocess import (
     check_call,
     check_output,
@@ -45,33 +52,52 @@ def parse_arguments():
 
 
 def current_weight(osd):
-    """Obtain current node weight."""
-    osd_tree = check_output(["ceph", "osd", "tree"], universal_newlines=True)
-    for line in osd_tree.splitlines():
-        if osd + " " in line:
-            raw_weight = line.split()[1]
+    """Obtain current OSD weight."""
+    osd_tree = json.loads(
+        check_output(
+            ["ceph", "osd", "tree", "--format", "json"],
+            universal_newlines=True
+        )
+    )
+    for node in osd_tree["nodes"]:
+        if node["name"] == osd:
+            raw_weight = node["crush_weight"]
             print("Current raw weight: {}".format(raw_weight))
             # Ceph often reweights approximately, so round current weight
             # for basis of comparison with target weight.
-            rounded_weight = round(float(raw_weight), 1)
+            rounded_weight = round(raw_weight, 1)
             print("Current rounded weight: {}".format(rounded_weight))
             return rounded_weight
     return None
 
 
-def ceph_health():
-    """Obtain ceph health status."""
-    health = check_output(["ceph", "health"], universal_newlines=True)
-    status = health.split()[0]
-    print("Ceph status: {}".format(status))
-    return status
+def status_ok():
+    """Determine if ceph status is suitable for reweighting."""
+    status = json.loads(
+        check_output(
+            ["ceph", "status", "--format", "json"],
+            universal_newlines=True
+        )
+    )
+    status_is_ok = True
+    if status["health"]["overall_status"] == "HEALTH_OK":
+        return status_is_ok
+    for key in ("degraded_ratio",
+                "misplaced_ratio",
+                "recovering_objects_per_sec"):
+        if key in status["pgmap"]:
+            value = float(status["pgmap"][key])
+            if value:
+                status_is_ok = False
+                print("{}: {}".format(key, value))
+    return status_is_ok
 
 
 def reweight(osd, current, target, step):
     """Determine reweight values and perform reweight."""
     step = abs(step)
     while current != target:
-        if ceph_health() == "HEALTH_OK":
+        if status_ok():
             if target > current:
                 next_weight = round(current + step, 2)
                 if next_weight > target:
@@ -88,12 +114,14 @@ def reweight(osd, current, target, step):
             sleep(5)  # Give the reweight a chance to kick off.
             current = current_weight(osd)
         else:
-            print('Waiting for `ceph health` to return "HEALTH_OK"...')
-            sleep(60)
-    while ceph_health() != "HEALTH_OK":
-        print('Waiting for `ceph health` to return "HEALTH_OK"...')
-        sleep(60)
-    print("{} weight is now {}, ceph health is OK.".format(osd, current))
+            print("Waiting for Ceph status to be suitable for reweighting...")
+            sleep(20)  # DEBUG: Revert duration to 60s after testing.
+    while not status_ok():
+        print("Waiting for Ceph status to be suitable for reweighting...")
+        sleep(20)  # DEBUG: Revert duration to 60s after testing.
+    print("{} weight is now {}, "
+          "Ceph status is suitable for further reweighting."
+          .format(osd, current))
 
 
 def main():
