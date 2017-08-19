@@ -4,6 +4,24 @@
 # ceph_reweight.py
 
 
+## Version History
+
+
+### 0.1.0
+
+* Initial release
+
+
+### 0.2.0
+
+* Target weight rounded for basis of comparison with current weight
+* Removed `sudo` from commands
+* os functions substituted for subprocess functions
+* Switched from plain to JSON Ceph output
+* Ceph status now determined based on pgmap degraded_ratio, misplaced_ratio and
+  recovering_objects_per_sec, in addition to overall health status
+
+
 ## Ceph Commands
 
 * `ceph status --format json`
@@ -18,7 +36,7 @@
 * Bump minor when complete
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Stephen Mather <stephen.mather@canonical.com>"
 
 import argparse
